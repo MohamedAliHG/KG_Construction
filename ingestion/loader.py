@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 def _chroma_client() -> chromadb.PersistentClient:
-    """Return a persistent ChromaDB client pointed at the configured path."""
     return chromadb.PersistentClient(path=settings.chroma_path)
 
 
@@ -54,7 +53,6 @@ def load_chunks(
 
 
 def load_all_chunks(collection_name: str | None = None) -> list[Document]:
-    """Convenience wrapper — loads every chunk into a single flat list."""
     return [
         doc
         for batch in load_chunks(collection_name=collection_name, batch_size=500)
