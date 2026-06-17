@@ -11,9 +11,9 @@ def test_run_async_threads_schema_and_mode(monkeypatch):
     async def fake_extract_graph_documents(
         documents,
         *,
+        llm_provider,
         schema_level,
         extraction_mode,
-        llm_provider,
         node_properties,
         relationship_properties,
         llm=None,
@@ -26,9 +26,10 @@ def test_run_async_threads_schema_and_mode(monkeypatch):
         assert llm is None
         return [object(), object()]
 
-    def fake_load_chunks(collection_name=None, batch_size=None):
+    def fake_load_chunks(collection_name=None, batch_size=None, namespace=None):
         assert collection_name == "demo"
         assert batch_size == 2
+        assert namespace == "experiment_a"
         yield [1, 2]
 
     captured = []
@@ -44,6 +45,7 @@ def test_run_async_threads_schema_and_mode(monkeypatch):
         pipeline_module.run_async(
             collection_name="demo",
             batch_size=2,
+            namespace="experiment_a",
             llm_provider="local",
             schema_level="strict",
             extraction_mode="prompt",

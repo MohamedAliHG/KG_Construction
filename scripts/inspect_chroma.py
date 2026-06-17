@@ -31,6 +31,7 @@ def cmd_show_chunks(
     limit: int | None,
     full: bool,
     search: str | None,
+    namespace: str | None,
 ) -> None:
     try:
         col = client.get_collection(collection_name)
@@ -39,12 +40,14 @@ def cmd_show_chunks(
         print("Run with --collections to see available collections.")
         sys.exit(1)
 
-    total = col.count()
+    where = {"namespace": namespace} if namespace is not None else None
+    total = len(col.get(where=where, include=["metadatas"])["ids"]) if where else col.count()
     fetch_limit = limit or total
 
     result = col.get(
         limit=fetch_limit,
         include=["documents", "metadatas", "embeddings"],
+        where=where,
     )
 
     ids = result["ids"]
@@ -125,6 +128,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=f"Override ChromaDB path (default: {settings.chroma_path!r}).",
     )
+    parser.add_argument(
+        "--namespace",
+        default=None,
+        help="Optional Chroma metadata namespace filter.",
+    )
     return parser.parse_args()
 
 
@@ -147,6 +155,7 @@ def main() -> None:
         limit=args.limit,
         full=args.full,
         search=args.search,
+        namespace=args.namespace,
     )
 
 

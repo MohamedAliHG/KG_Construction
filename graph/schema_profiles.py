@@ -21,11 +21,29 @@ class ExtractionMode(StrEnum):
 PropertySpec: TypeAlias = bool | tuple[str, ...]
 
 
-DEFAULT_ALLOWED_NODES: tuple[str, ...] = ()
+DEFAULT_ALLOWED_NODES: tuple[str, ...] = (
+    "Person",
+    "Organization",
+    "Location",
+    "Award",
+    "ResearchField",
+)
 
-DEFAULT_ALLOWED_RELATIONSHIPS: tuple[str, ...] = ()
+DEFAULT_ALLOWED_RELATIONSHIPS: tuple[str, ...] = (
+    "SPOUSE",
+    "AWARD",
+    "FIELD_OF_RESEARCH",
+    "WORKS_AT",
+    "IN_LOCATION",
+)
 
-DEFAULT_STRICT_RELATIONSHIPS: tuple[tuple[str, str, str], ...] = ()
+DEFAULT_STRICT_RELATIONSHIPS: tuple[tuple[str, str, str], ...] = (
+    ("Person", "SPOUSE", "Person"),
+    ("Person", "AWARD", "Award"),
+    ("Person", "WORKS_AT", "Organization"),
+    ("Organization", "IN_LOCATION", "Location"),
+    ("Person", "FIELD_OF_RESEARCH", "ResearchField"),
+)
 
 
 @dataclass(frozen=True, slots=True)

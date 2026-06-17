@@ -22,7 +22,7 @@ env/
 
 # ChromaDB / local data
 chroma_db/
-chroma_db_demo/
+chroma_db_*/
 *.sqlite3
 
 
@@ -35,3 +35,7 @@ Thumbs.db
 # Logs
 *.log
 
+# Local tooling / metadata
+.codex/
+.agents/
+*:Zone.Identifier

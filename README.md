@@ -12,13 +12,15 @@ The project supports:
 - two extraction modes: `tool` and `prompt`
 - node and relationship property extraction in tool mode
 - Groq or a local OpenAI-compatible LLM endpoint
+- a separate PDF indexing stage that writes ChromaDB collections
 
 ## Project Layout
 
-- `config/` - runtime settings
-- `ingestion/` - ChromaDB loading helpers
+- `config/` - runtime settings loaded from `.env`
+- `ingestion/document_indexing/` - all PDF indexing logic, organized into subpackages
+- `ingestion/` - ChromaDB loading helpers for KG construction
 - `graph/` - transformer, schema presets, and Neo4j persistence
-- `pipeline/` - end-to-end orchestration
+- `pipeline/` - KG orchestration
 - `scripts/` - command-line entry points
 - `tests/` - unit tests
 
@@ -37,7 +39,9 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Create a `.env` file in the project root.
+Use a single `.env` file in the project root.
+
+You can start from `.env.example` and fill in your own values.
 
 ### Neo4j
 
@@ -71,6 +75,7 @@ local_llm_api_key=local-key
 ```env
 chroma_path=./chroma_db
 chroma_collection=collection_demo
+chroma_namespace=default
 ```
 
 ### Pipeline Defaults
@@ -85,6 +90,27 @@ relationship_properties=off
 
 ## CLI Usage
 
+Index PDFs into ChromaDB:
+
+```bash
+python scripts/index_documents.py
+python scripts/index_documents.py --namespace experiment_a
+```
+
+By default, the indexing config reads PDFs from `data/raw/`.
+
+Common options:
+
+- `--input-path PATH` - raw PDF file or directory
+- `--strategy fixed_character|hierarchical|hybrid` - choose the chunking strategy
+- `--chunk-size N` - override chunk size / max tokens for `fixed_character` or `hybrid`
+- `--chunk-overlap N` - override overlap for `fixed_character`
+- `--namespace NAME` - write a Chroma metadata namespace for later KG loading
+- `--enable-picture-description` - turn on VLM picture descriptions
+
+This indexing command is currently PDF-only.
+All indexing defaults live in [config/settings.py](/home/medali/work/docling_test/KG_Construction/config/settings.py) and can be overridden through `.env` or CLI flags.
+
 Run the full pipeline:
 
 ```bash
@@ -96,6 +122,7 @@ Common options:
 - `--clean` - delete all existing Neo4j graph data before running
 - `--collection NAME` - choose a ChromaDB collection
 - `--batch-size N` - number of chunks per batch
+- `--namespace NAME` - filter Chroma chunks by metadata namespace
 - `--llm-provider groq|local` - choose the model backend
 - `--schema-level unconstrained|constrained|strict` - choose schema strictness
 - `--extraction-mode tool|prompt` - choose structured or prompt-based extraction
@@ -107,6 +134,7 @@ Examples:
 ```bash
 python scripts/run_pipeline.py --clean
 python scripts/run_pipeline.py --collection collection_demo --batch-size 5
+python scripts/run_pipeline.py --namespace experiment_hybrid
 python scripts/run_pipeline.py --llm-provider local --schema-level strict
 python scripts/run_pipeline.py --schema-level constrained --extraction-mode prompt
 python scripts/run_pipeline.py --schema-level strict --node-properties any
@@ -141,6 +169,15 @@ Property extraction is only supported in `tool` mode.
 3. `graph.neo4j_store.add_graph_documents()` writes the graph into Neo4j
 
 The pipeline processes batches sequentially to keep LLM usage predictable.
+
+## End-to-End Workflow
+
+The recommended setup is:
+
+1. Run `scripts/index_documents.py` to build or refresh a Chroma collection.
+2. Run `scripts/run_pipeline.py` with the same collection name and namespace to build the KG.
+
+Use one namespace per indexing run if you want to compare different chunking or embedding strategies inside the same collection.
 
 
 ## Testing

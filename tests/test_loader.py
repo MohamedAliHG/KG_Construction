@@ -14,7 +14,10 @@ def populated_chroma(tmp_path, monkeypatch):
     col = client.create_collection("test_collection")
     col.add(
         documents=["Marie Curie won the Nobel Prize.", "Einstein developed relativity."],
-        metadatas=[{"source": "doc1"}, {"source": "doc2"}],
+        metadatas=[
+            {"source": "doc1", "namespace": "experiment_a"},
+            {"source": "doc2", "namespace": "experiment_b"},
+        ],
         ids=["1", "2"],
     )
 
@@ -23,6 +26,7 @@ def populated_chroma(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "chroma_path", str(tmp_path))
     monkeypatch.setattr(settings, "chroma_collection", "test_collection")
     monkeypatch.setattr(settings, "batch_size", 5)
+    monkeypatch.setattr(settings, "chroma_namespace", None)
 
     return col
 
@@ -61,3 +65,12 @@ def test_load_chunks_batching(populated_chroma, monkeypatch):
     monkeypatch.setattr(settings, "batch_size", 1)
     batches = list(load_chunks(batch_size=1))
     assert len(batches) == 2
+
+
+def test_load_chunks_filters_namespace(populated_chroma):
+    from ingestion.loader import load_chunks
+
+    batches = list(load_chunks(namespace="experiment_a"))
+    assert len(batches) == 1
+    assert len(batches[0]) == 1
+    assert batches[0][0].metadata["namespace"] == "experiment_a"

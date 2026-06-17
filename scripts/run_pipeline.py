@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from graph import clean_graph
-from pipeline import run
+from pipeline.build_graph import run
 from graph.schema_profiles import ExtractionMode, SchemaLevel, parse_property_spec
 
 logging.basicConfig(
@@ -36,6 +36,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="Number of chunks per LLM extraction batch (overrides .env BATCH_SIZE).",
+    )
+    parser.add_argument(
+        "--namespace",
+        default=None,
+        help="Optional Chroma namespace filter (overrides .env CHROMA_NAMESPACE).",
     )
     parser.add_argument(
         "--llm-provider",
@@ -89,6 +94,7 @@ def main() -> None:
     stats = run(
         collection_name=args.collection,
         batch_size=args.batch_size,
+        namespace=args.namespace,
         llm_provider=args.llm_provider,
         schema_level=args.schema_level,
         extraction_mode=args.extraction_mode,

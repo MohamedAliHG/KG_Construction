@@ -38,6 +38,7 @@ class PipelineStats:
 async def run_async(
     collection_name: str | None = None,
     batch_size: int | None = None,
+    namespace: str | None = None,
     llm_provider: str | None = None,
     schema_level: str | SchemaLevel | None = None,
     extraction_mode: str | ExtractionMode | None = None,
@@ -51,6 +52,7 @@ async def run_async(
     resolved_extraction_mode = (
         settings.extraction_mode if extraction_mode is None else extraction_mode
     )
+    resolved_namespace = settings.chroma_namespace if namespace is None else namespace
     resolved_node_properties = (
         settings.node_properties if node_properties is None else node_properties
     )
@@ -60,7 +62,11 @@ async def run_async(
         else relationship_properties
     )
 
-    for batch in load_chunks(collection_name=collection_name, batch_size=batch_size):
+    for batch in load_chunks(
+        collection_name=collection_name,
+        batch_size=batch_size,
+        namespace=resolved_namespace,
+    ):
         batch_num = stats.batches_processed + 1
         logger.info("Processing batch %d (%d chunks) …", batch_num, len(batch))
 
@@ -92,6 +98,7 @@ async def run_async(
 def run(
     collection_name: str | None = None,
     batch_size: int | None = None,
+    namespace: str | None = None,
     llm_provider: str | None = None,
     schema_level: str | SchemaLevel | None = None,
     extraction_mode: str | ExtractionMode | None = None,
@@ -102,6 +109,7 @@ def run(
         run_async(
             collection_name=collection_name,
             batch_size=batch_size,
+            namespace=namespace,
             llm_provider=llm_provider,
             schema_level=schema_level,
             extraction_mode=extraction_mode,
