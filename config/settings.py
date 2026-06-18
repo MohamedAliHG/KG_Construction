@@ -39,7 +39,11 @@ class Settings(BaseSettings):
     document_input_path: str = "data/raw"
     document_chunk_strategy: str = "hybrid"
     document_image_resolution_scale: float = 2.0
-    document_enable_picture_description: bool = False
+    document_enable_picture_description: bool = True
+    document_vlm_url: str = "http://localhost:8080"
+    document_vlm_model_name: str = "qwen"
+    document_vlm_timeout: int = 60
+    document_vlm_prompt: str = "Describe this image in sentences in a single paragraph."
     document_fixed_character_chunk_size: int = 2000
     document_fixed_character_chunk_overlap: int = 200
     document_hierarchical_merge_list_items: bool = True

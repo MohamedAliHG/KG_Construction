@@ -1,6 +1,8 @@
-"""Character-count based chunker."""
+"""Markdown-friendly recursive character chunker."""
 
 from __future__ import annotations
+
+from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 
 from ingestion.document_indexing.chunking.base import BaseChunker
 from ingestion.document_indexing.chunking.registry import register_chunker
@@ -13,6 +15,11 @@ class FixedCharacterChunker(BaseChunker):
         super().__init__(config=None)
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        self._splitter = RecursiveCharacterTextSplitter.from_language(
+            language=Language.MARKDOWN,
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
 
     def chunk(self, document: ParsedDocument) -> list[DocumentChunk]:
         text = document.markdown.strip()
@@ -20,9 +27,7 @@ class FixedCharacterChunker(BaseChunker):
             return []
 
         chunks: list[DocumentChunk] = []
-        step = max(1, self.chunk_size - self.chunk_overlap)
-        for idx, start in enumerate(range(0, len(text), step)):
-            piece_text = text[start : start + self.chunk_size].strip()
+        for idx, piece_text in enumerate(self._splitter.split_text(text)):
             if not piece_text:
                 break
             chunks.append(

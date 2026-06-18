@@ -25,6 +25,10 @@ class DocumentPipeline:
             supported_extensions=(".pdf",),
             image_resolution_scale=settings.document_image_resolution_scale,
             enable_picture_description=settings.document_enable_picture_description,
+            vlm_url=settings.document_vlm_url,
+            vlm_model_name=settings.document_vlm_model_name,
+            vlm_timeout=settings.document_vlm_timeout,
+            vlm_prompt=settings.document_vlm_prompt,
         )
         self.chunker = create_chunker(settings.document_chunk_strategy)
         self.embedder = HuggingFaceEmbedder()

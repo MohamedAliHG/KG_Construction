@@ -1,11 +1,17 @@
-"""Hybrid Docling chunker with doc structure plus token limits."""
+"""Hybrid Docling chunker with document structure plus token limits."""
 
 from __future__ import annotations
 
 from ingestion.document_indexing.chunking.base import BaseChunker
-from ingestion.document_indexing.chunking.docling_utils import chunk_to_document_chunk
+from ingestion.document_indexing.chunking.docling_utils import (
+    build_huggingface_tokenizer,
+    build_markdown_serializer_provider,
+    chunk_to_document_chunk,
+)
 from ingestion.document_indexing.chunking.registry import register_chunker
 from ingestion.document_indexing.types import DocumentChunk, ParsedDocument
+
+from docling.chunking import HybridChunker as DoclingHybridChunker
 
 
 @register_chunker("hybrid")
@@ -29,44 +35,30 @@ class HybridChunker(BaseChunker):
         self.image_placeholder = image_placeholder
         self.mark_annotations = mark_annotations
         self.include_annotations = include_annotations
+        self._chunker = DoclingHybridChunker(
+            tokenizer=build_huggingface_tokenizer(self.tokenizer, self.max_tokens),
+            serializer_provider=build_markdown_serializer_provider(
+                image_mode=self.image_mode,
+                image_placeholder=self.image_placeholder,
+                mark_annotations=self.mark_annotations,
+                include_annotations=self.include_annotations,
+            ),
+            merge_peers=self.merge_peers,
+        )
 
     def chunk(self, document: ParsedDocument) -> list[DocumentChunk]:
         chunks: list[DocumentChunk] = []
-        dl_chunks = getattr(document.dl_doc, "chunks", None) or []
-
-        if dl_chunks:
-            for idx, chunk in enumerate(dl_chunks):
-                text = getattr(chunk, "text", None) or getattr(chunk, "content", None)
-                if not text:
-                    continue
-                chunks.append(
-                    chunk_to_document_chunk(
-                        document=document,
-                        strategy=self.name,
-                        chunk_index=idx,
-                        chunk=chunk,
-                        text=str(text).strip(),
-                    )
-                )
-
-        if chunks:
-            return chunks
-
-        text = document.markdown.strip()
-        if not text:
-            return []
-
-        words = text.split()
-        step = max(1, self.max_tokens)
-        for idx, start in enumerate(range(0, len(words), step)):
-            piece_text = " ".join(words[start : start + step]).strip()
-            if not piece_text:
-                break
+        for idx, chunk in enumerate(self._chunker.chunk(document.dl_doc)):
+            text = getattr(chunk, "text", None) or getattr(chunk, "content", None)
+            if not text:
+                continue
             chunks.append(
-                DocumentChunk(
-                    chunk_id=f"{document.doc_id}_{self.name}_{idx}",
-                    text=piece_text,
-                    metadata=self._metadata(document, idx),
+                chunk_to_document_chunk(
+                    document=document,
+                    strategy=self.name,
+                    chunk_index=idx,
+                    chunk=chunk,
+                    text=str(text).strip(),
                 )
             )
         return chunks

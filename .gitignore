@@ -41,3 +41,4 @@ Thumbs.db
 *:Zone.Identifier
 
 data/raw/*.pdf
+*.txt

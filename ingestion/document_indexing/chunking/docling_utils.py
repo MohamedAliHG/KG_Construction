@@ -3,7 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+from functools import lru_cache
 from typing import Any, Dict
+
+from docling_core.transforms.chunker.hierarchical_chunker import (
+    ChunkingDocSerializer,
+    ChunkingSerializerProvider,
+)
+from docling_core.transforms.chunker.tokenizer.huggingface import HuggingFaceTokenizer
+from docling_core.transforms.serializer.markdown import MarkdownParams, MarkdownTableSerializer
+from docling_core.types.doc import ImageRefMode
+from transformers import AutoTokenizer
 
 from ingestion.document_indexing.types import DocumentChunk, ParsedDocument
 
@@ -71,3 +81,56 @@ def extract_docling_metadata(chunk: Any) -> Dict[str, Any]:
         metadata["doc_item_types"] = sorted(set(item_types))
 
     return metadata
+
+
+def build_huggingface_tokenizer(model_id: str, max_tokens: int) -> HuggingFaceTokenizer:
+    """Load and wrap a Hugging Face tokenizer for Docling chunking."""
+
+    return HuggingFaceTokenizer(tokenizer=_load_auto_tokenizer(model_id), max_tokens=max_tokens)
+
+
+def build_markdown_serializer_provider(
+    *,
+    image_mode: str | ImageRefMode,
+    image_placeholder: str,
+    mark_annotations: bool,
+    include_annotations: bool,
+) -> ChunkingSerializerProvider:
+    """Create a Docling markdown serializer provider with project-specific defaults."""
+
+    resolved_image_mode = _coerce_image_mode(image_mode)
+
+    class MarkdownSerializerProvider(ChunkingSerializerProvider):
+        def get_serializer(self, doc):  # type: ignore[override]
+            return ChunkingDocSerializer(
+                doc=doc,
+                table_serializer=MarkdownTableSerializer(),
+                params=MarkdownParams(
+                    image_mode=resolved_image_mode,
+                    image_placeholder=image_placeholder,
+                    mark_annotations=mark_annotations,
+                    include_annotations=include_annotations,
+                ),
+            )
+
+    return MarkdownSerializerProvider()
+
+
+@lru_cache(maxsize=8)
+def _load_auto_tokenizer(model_id: str):
+    try:
+        return AutoTokenizer.from_pretrained(model_id)
+    except Exception as exc:  # pragma: no cover - depends on local cache/network
+        raise RuntimeError(
+            f"Unable to load Hugging Face tokenizer '{model_id}'. "
+            "Install the model locally or ensure the tokenizer cache is available."
+        ) from exc
+
+
+def _coerce_image_mode(image_mode: str | ImageRefMode) -> ImageRefMode:
+    if isinstance(image_mode, ImageRefMode):
+        return image_mode
+    try:
+        return ImageRefMode(str(image_mode))
+    except Exception as exc:  # pragma: no cover - invalid config guard
+        raise ValueError(f"Invalid Docling image mode: {image_mode!r}") from exc

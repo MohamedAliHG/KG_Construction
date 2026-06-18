@@ -7,18 +7,21 @@ from ingestion.document_indexing.chunking.docling_utils import chunk_to_document
 from ingestion.document_indexing.chunking.registry import register_chunker
 from ingestion.document_indexing.types import DocumentChunk, ParsedDocument
 
+from docling_core.transforms.chunker.hierarchical_chunker import (
+    HierarchicalChunker as DoclingHierarchicalChunker,
+)
+
 
 @register_chunker("hierarchical")
 class HierarchicalChunker(BaseChunker):
     def __init__(self, *, merge_list_items: bool) -> None:
         super().__init__(config=None)
         self.merge_list_items = merge_list_items
+        self._chunker = DoclingHierarchicalChunker(merge_list_items=self.merge_list_items)
 
     def chunk(self, document: ParsedDocument) -> list[DocumentChunk]:
         chunks: list[DocumentChunk] = []
-        dl_chunks = getattr(document.dl_doc, "chunks", None) or []
-
-        for idx, chunk in enumerate(dl_chunks):
+        for idx, chunk in enumerate(self._chunker.chunk(document.dl_doc)):
             text = getattr(chunk, "text", None) or getattr(chunk, "content", None)
             if not text:
                 continue
@@ -31,14 +34,4 @@ class HierarchicalChunker(BaseChunker):
                     text=str(text).strip(),
                 )
             )
-
-        if chunks:
-            return chunks
-
-        return [
-            DocumentChunk(
-                chunk_id=f"{document.doc_id}_{self.name}_0",
-                text=document.markdown.strip(),
-                metadata=self._metadata(document, 0),
-            )
-        ]
+        return chunks

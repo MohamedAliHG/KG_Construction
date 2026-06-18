@@ -20,12 +20,20 @@ class DoclingIngestor:
         supported_extensions: Iterable[str] = (".pdf",),
         image_resolution_scale: float = 2.0,
         enable_picture_description: bool = False,
+        vlm_url: str | None = None,
+        vlm_model_name: str | None = None,
+        vlm_timeout: int | None = None,
+        vlm_prompt: str | None = None,
     ) -> None:
         self.input_path = input_path
         self.supported_extensions = tuple(ext.lower() for ext in supported_extensions)
         self.converter = build_document_converter(
             image_resolution_scale=image_resolution_scale,
             enable_picture_description=enable_picture_description,
+            vlm_url=vlm_url,
+            vlm_model_name=vlm_model_name,
+            vlm_timeout=vlm_timeout,
+            vlm_prompt=vlm_prompt,
         )
 
     def iter_paths(
