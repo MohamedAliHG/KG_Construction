@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 _graph: Neo4jGraph | None = None
 
+_VECTOR_SIMILARITY_FUNCTIONS = {"cosine", "euclidean", "dot_product"}
+
 
 def _safe_type_name(value: str | None, fallback: str) -> str:
     if not value:
@@ -32,10 +34,17 @@ def _source_document_payload(graph_doc: GraphDocument) -> dict[str, Any] | None:
         source_id = hashlib.md5(graph_doc.source.page_content.encode("utf-8")).hexdigest()
         metadata["id"] = source_id
 
+    embedding = metadata.pop("embedding", None)
+    embedding_model = metadata.pop("embedding_model", None)
+    embedding_dim = metadata.pop("embedding_dim", None)
+
     return {
         "id": source_id,
         "text": graph_doc.source.page_content,
         "metadata": metadata,
+        "embedding": embedding,
+        "embedding_model": embedding_model,
+        "embedding_dim": embedding_dim,
     }
 
 
@@ -81,6 +90,35 @@ def get_graph() -> Neo4jGraph:
     return _graph
 
 
+def create_document_vector_index(
+    index_name: str = "document_embedding_index",
+    dimensions: int = 384,
+    similarity_function: str = "cosine",
+) -> None:
+    _validate_vector_index_name(index_name)
+    _validate_vector_dimensions(dimensions)
+    similarity_function = _validate_similarity_function(similarity_function)
+
+    query = f"""
+    CREATE VECTOR INDEX {index_name} IF NOT EXISTS
+    FOR (d:Document)
+    ON (d.embedding)
+    OPTIONS {{
+      indexConfig: {{
+        `vector.dimensions`: {dimensions},
+        `vector.similarity_function`: '{similarity_function}'
+      }}
+    }}
+    """
+    get_graph().query(query)
+    logger.info(
+        "Created/verified vector index '%s' on (:Document).embedding (dimensions=%d, similarity=%s)",
+        index_name,
+        dimensions,
+        similarity_function,
+    )
+
+
 def add_graph_documents(graph_docs: list[GraphDocument]) -> None:
     g = get_graph()
 
@@ -92,6 +130,15 @@ def add_graph_documents(graph_docs: list[GraphDocument]) -> None:
                 MERGE (d:Document {id: $id})
                 SET d.text = $text
                 SET d += $metadata
+                FOREACH (_ IN CASE WHEN $embedding IS NOT NULL THEN [1] ELSE [] END |
+                    SET d.embedding = $embedding
+                )
+                FOREACH (_ IN CASE WHEN $embedding_model IS NOT NULL THEN [1] ELSE [] END |
+                    SET d.embedding_model = $embedding_model
+                )
+                FOREACH (_ IN CASE WHEN $embedding_dim IS NOT NULL THEN [1] ELSE [] END |
+                    SET d.embedding_dim = $embedding_dim
+                )
                 """,
                 source_payload,
             )
@@ -146,3 +193,30 @@ def refresh_schema() -> str:
     g = get_graph()
     g.refresh_schema()
     return g.schema
+
+
+def _validate_vector_index_name(index_name: str) -> str:
+    if not index_name:
+        raise ValueError("index_name must not be empty")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", index_name):
+        raise ValueError(
+            "index_name must contain only letters, numbers, and underscores, "
+            "and must not start with a number"
+        )
+    return index_name
+
+
+def _validate_vector_dimensions(dimensions: int) -> int:
+    if not isinstance(dimensions, int) or dimensions <= 0:
+        raise ValueError("dimensions must be a positive integer")
+    return dimensions
+
+
+def _validate_similarity_function(similarity_function: str) -> str:
+    normalized = (similarity_function or "").strip().lower()
+    if normalized not in _VECTOR_SIMILARITY_FUNCTIONS:
+        allowed = ", ".join(sorted(_VECTOR_SIMILARITY_FUNCTIONS))
+        raise ValueError(
+            f"Unsupported similarity_function '{similarity_function}'. Allowed: {allowed}"
+        )
+    return normalized

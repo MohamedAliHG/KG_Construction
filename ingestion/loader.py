@@ -50,14 +50,32 @@ def load_chunks(
         result = collection.get(
             limit=batch_size,
             offset=offset,
-            include=["documents", "metadatas"],
+            include=["documents", "metadatas", "embeddings"],
             where=where,
         )
 
-        docs = [
-            Document(page_content=text, metadata=meta or {})
-            for text, meta in zip(result["documents"], result["metadatas"])
-        ]
+        docs = []
+        ids = _safe_result_list(result.get("ids"))
+        documents = _safe_result_list(result.get("documents"))
+        metadatas = _safe_result_list(result.get("metadatas"))
+        embeddings = _safe_result_list(result.get("embeddings"))
+
+        for idx, (chunk_id, text, meta) in enumerate(zip(ids, documents, metadatas)):
+            metadata = dict(meta or {})
+            if chunk_id and not metadata.get("id"):
+                metadata["id"] = chunk_id
+            if chunk_id and not metadata.get("chunk_id"):
+                metadata["chunk_id"] = chunk_id
+
+            embedding = _coerce_embedding(embeddings[idx] if idx < len(embeddings) else None)
+            if embedding is not None:
+                metadata["embedding"] = embedding
+                metadata["embedding_model"] = (
+                    metadata.get("embedding_model") or settings.document_embedding_model_name
+                )
+                metadata["embedding_dim"] = len(embedding)
+
+            docs.append(Document(page_content=text, metadata=metadata))
 
         logger.debug("Loaded batch offset=%d, size=%d", offset, len(docs))
         yield docs
@@ -77,3 +95,30 @@ def load_all_chunks(
         )
         for doc in batch
     ]
+
+
+def _coerce_embedding(value) -> list[float] | None:
+    if value is None:
+        return None
+
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+
+    if isinstance(value, (list, tuple)):
+        try:
+            return [float(item) for item in value]
+        except (TypeError, ValueError):
+            logger.debug("Skipping non-numeric embedding value: %r", value)
+            return None
+
+    try:
+        return [float(item) for item in list(value)]
+    except TypeError:
+        logger.debug("Skipping unsupported embedding value: %r", value)
+        return None
+
+
+def _safe_result_list(value):
+    if value is None:
+        return []
+    return list(value)

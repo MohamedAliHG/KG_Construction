@@ -12,6 +12,8 @@ def populated_chroma(tmp_path, monkeypatch):
 
     client = chromadb.PersistentClient(path=str(tmp_path))
     col = client.create_collection("test_collection")
+    emb1 = [0.1] * 384
+    emb2 = [0.2] * 384
     col.add(
         documents=["Marie Curie won the Nobel Prize.", "Einstein developed relativity."],
         metadatas=[
@@ -19,6 +21,7 @@ def populated_chroma(tmp_path, monkeypatch):
             {"source": "doc2", "namespace": "experiment_b"},
         ],
         ids=["1", "2"],
+        embeddings=[emb1, emb2],
     )
 
     # Patch settings to point at our temp DB
@@ -49,6 +52,12 @@ def test_load_chunks_preserves_metadata(populated_chroma):
     docs = list(load_chunks())[0]
     sources = {d.metadata.get("source") for d in docs}
     assert sources == {"doc1", "doc2"}
+    for doc in docs:
+        assert doc.metadata["id"] in {"1", "2"}
+        assert doc.metadata["chunk_id"] in {"1", "2"}
+        assert doc.metadata["embedding_model"]
+        assert doc.metadata["embedding_dim"] == 384
+        assert len(doc.metadata["embedding"]) == 384
 
 
 def test_load_all_chunks(populated_chroma):
@@ -74,3 +83,31 @@ def test_load_chunks_filters_namespace(populated_chroma):
     assert len(batches) == 1
     assert len(batches[0]) == 1
     assert batches[0][0].metadata["namespace"] == "experiment_a"
+
+
+def test_load_chunks_handles_missing_embeddings(tmp_path, monkeypatch):
+    from ingestion.loader import load_chunks
+
+    class FakeCollection:
+        def count(self):
+            return 1
+
+        def get(self, limit=None, offset=None, include=None, where=None):
+            return {
+                "ids": ["1"],
+                "documents": ["No embedding here."],
+                "metadatas": [{"source": "doc1", "namespace": "experiment_a"}],
+                "embeddings": [None],
+            }
+
+    class FakeClient:
+        def get_collection(self, name):
+            return FakeCollection()
+
+    monkeypatch.setattr("ingestion.loader._chroma_client", lambda: FakeClient())
+
+    docs = list(load_chunks(collection_name="test_collection_missing_embeddings"))[0]
+    assert len(docs) == 1
+    assert "embedding" not in docs[0].metadata
+    assert "embedding_model" not in docs[0].metadata
+    assert "embedding_dim" not in docs[0].metadata
