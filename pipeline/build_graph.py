@@ -39,6 +39,7 @@ async def run_async(
     collection_name: str | None = None,
     batch_size: int | None = None,
     namespace: str | None = None,
+    pages: tuple[int, ...] | list[int] | None = None,
     llm_provider: str | None = None,
     schema_level: str | SchemaLevel | None = None,
     extraction_mode: str | ExtractionMode | None = None,
@@ -66,6 +67,7 @@ async def run_async(
         collection_name=collection_name,
         batch_size=batch_size,
         namespace=resolved_namespace,
+        pages=pages,
     ):
         batch_num = stats.batches_processed + 1
         logger.info("Processing batch %d (%d chunks) …", batch_num, len(batch))
@@ -99,6 +101,7 @@ def run(
     collection_name: str | None = None,
     batch_size: int | None = None,
     namespace: str | None = None,
+    pages: tuple[int, ...] | list[int] | None = None,
     llm_provider: str | None = None,
     schema_level: str | SchemaLevel | None = None,
     extraction_mode: str | ExtractionMode | None = None,
@@ -110,6 +113,7 @@ def run(
             collection_name=collection_name,
             batch_size=batch_size,
             namespace=namespace,
+            pages=pages,
             llm_provider=llm_provider,
             schema_level=schema_level,
             extraction_mode=extraction_mode,

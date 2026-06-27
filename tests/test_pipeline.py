@@ -26,10 +26,11 @@ def test_run_async_threads_schema_and_mode(monkeypatch):
         assert llm is None
         return [object(), object()]
 
-    def fake_load_chunks(collection_name=None, batch_size=None, namespace=None):
+    def fake_load_chunks(collection_name=None, batch_size=None, namespace=None, pages=None):
         assert collection_name == "demo"
         assert batch_size == 2
         assert namespace == "experiment_a"
+        assert pages == (5, 17)
         yield [1, 2]
 
     captured = []
@@ -46,6 +47,7 @@ def test_run_async_threads_schema_and_mode(monkeypatch):
             collection_name="demo",
             batch_size=2,
             namespace="experiment_a",
+            pages=(5, 17),
             llm_provider="local",
             schema_level="strict",
             extraction_mode="prompt",

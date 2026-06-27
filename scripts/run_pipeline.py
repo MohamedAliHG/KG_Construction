@@ -43,6 +43,12 @@ def parse_args() -> argparse.Namespace:
         help="Optional Chroma namespace filter (overrides .env CHROMA_NAMESPACE).",
     )
     parser.add_argument(
+        "--pages",
+        type=parse_pages,
+        default=None,
+        help="Optional comma-separated page_no filter, such as 5,17,21.",
+    )
+    parser.add_argument(
         "--llm-provider",
         choices=["groq", "local"],
         default=None,
@@ -95,6 +101,7 @@ def main() -> None:
         collection_name=args.collection,
         batch_size=args.batch_size,
         namespace=args.namespace,
+        pages=args.pages,
         llm_provider=args.llm_provider,
         schema_level=args.schema_level,
         extraction_mode=args.extraction_mode,
@@ -117,6 +124,25 @@ def main() -> None:
     if stats.errors:
         print(f"{len(stats.errors)} batch error(s) — check logs above.")
         sys.exit(1)
+
+def parse_pages(value: str | None) -> tuple[int, ...] | None:
+    if value is None:
+        return None
+    pages = []
+    for part in value.split(","):
+        stripped = part.strip()
+        if not stripped:
+            continue
+        try:
+            page = int(stripped)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(
+                f"Invalid page number '{stripped}'"
+            ) from exc
+        if page <= 0:
+            raise argparse.ArgumentTypeError("Page numbers must be positive integers")
+        pages.append(page)
+    return tuple(sorted(set(pages))) or None
 
 
 if __name__ == "__main__":

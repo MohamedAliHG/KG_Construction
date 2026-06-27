@@ -17,8 +17,8 @@ def populated_chroma(tmp_path, monkeypatch):
     col.add(
         documents=["Marie Curie won the Nobel Prize.", "Einstein developed relativity."],
         metadatas=[
-            {"source": "doc1", "namespace": "experiment_a"},
-            {"source": "doc2", "namespace": "experiment_b"},
+            {"source": "doc1", "namespace": "experiment_a", "page_no": 5},
+            {"source": "doc2", "namespace": "experiment_b", "page_no": 17},
         ],
         ids=["1", "2"],
         embeddings=[emb1, emb2],
@@ -83,6 +83,25 @@ def test_load_chunks_filters_namespace(populated_chroma):
     assert len(batches) == 1
     assert len(batches[0]) == 1
     assert batches[0][0].metadata["namespace"] == "experiment_a"
+
+
+def test_load_chunks_filters_pages(populated_chroma):
+    from ingestion.loader import load_chunks
+
+    batches = list(load_chunks(pages=(17,)))
+    assert len(batches) == 1
+    assert len(batches[0]) == 1
+    assert batches[0][0].metadata["page_no"] == 17
+
+
+def test_load_chunks_filters_namespace_and_pages(populated_chroma):
+    from ingestion.loader import load_chunks
+
+    batches = list(load_chunks(namespace="experiment_a", pages=(5, 17)))
+    assert len(batches) == 1
+    assert len(batches[0]) == 1
+    assert batches[0][0].metadata["namespace"] == "experiment_a"
+    assert batches[0][0].metadata["page_no"] == 5
 
 
 def test_load_chunks_handles_missing_embeddings(tmp_path, monkeypatch):

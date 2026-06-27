@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterator
+from typing import Iterator, Sequence
 
 import chromadb
 from langchain_core.documents import Document
@@ -19,13 +19,15 @@ def load_chunks(
     collection_name: str | None = None,
     batch_size: int | None = None,
     namespace: str | None = None,
+    pages: Sequence[int] | None = None,
 ) -> Iterator[list[Document]]:
     collection_name = collection_name or settings.chroma_collection
     batch_size = batch_size or settings.batch_size
 
     client = _chroma_client()
     collection = client.get_collection(collection_name)
-    where = {"namespace": namespace} if namespace is not None else None
+    page_numbers = _normalize_pages(pages)
+    where = _build_where_filter(namespace=namespace, pages=page_numbers)
 
     if where is None:
         total = collection.count()
@@ -37,12 +39,17 @@ def load_chunks(
         )
     else:
         total = len(collection.get(where=where, include=["metadatas"])["ids"])
+        filter_parts = []
+        if namespace is not None:
+            filter_parts.append(f"namespace='{namespace}'")
+        if page_numbers:
+            filter_parts.append(f"pages={page_numbers}")
         logger.info(
-            "ChromaDB collection '%s' — %d chunks found at '%s' with namespace='%s'",
+            "ChromaDB collection '%s' — %d chunks found at '%s' with %s",
             collection_name,
             total,
             settings.chroma_path,
-            namespace,
+            ", ".join(filter_parts),
         )
 
     offset = 0
@@ -85,6 +92,7 @@ def load_chunks(
 def load_all_chunks(
     collection_name: str | None = None,
     namespace: str | None = None,
+    pages: Sequence[int] | None = None,
 ) -> list[Document]:
     return [
         doc
@@ -92,9 +100,34 @@ def load_all_chunks(
             collection_name=collection_name,
             batch_size=500,
             namespace=namespace,
+            pages=pages,
         )
         for doc in batch
     ]
+
+
+def _build_where_filter(
+    *,
+    namespace: str | None,
+    pages: tuple[int, ...],
+) -> dict | None:
+    filters = []
+    if namespace is not None:
+        filters.append({"namespace": namespace})
+    if pages:
+        filters.append({"page_no": {"$in": list(pages)}})
+
+    if not filters:
+        return None
+    if len(filters) == 1:
+        return filters[0]
+    return {"$and": filters}
+
+
+def _normalize_pages(pages: Sequence[int] | None) -> tuple[int, ...]:
+    if not pages:
+        return ()
+    return tuple(sorted({int(page) for page in pages}))
 
 
 def _coerce_embedding(value) -> list[float] | None:

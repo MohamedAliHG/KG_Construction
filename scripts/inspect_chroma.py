@@ -32,6 +32,7 @@ def cmd_show_chunks(
     full: bool,
     search: str | None,
     namespace: str | None,
+    pages: tuple[int, ...] | None,
 ) -> None:
     try:
         col = client.get_collection(collection_name)
@@ -40,7 +41,7 @@ def cmd_show_chunks(
         print("Run with --collections to see available collections.")
         sys.exit(1)
 
-    where = {"namespace": namespace} if namespace is not None else None
+    where = build_where_filter(namespace=namespace, pages=pages)
     total = len(col.get(where=where, include=["metadatas"])["ids"]) if where else col.count()
     fetch_limit = limit or total
 
@@ -65,12 +66,18 @@ def cmd_show_chunks(
         print(f"Collection : {collection_name}")
         print(f"Total      : {total} chunks")
         print(f"Search     : '{search}' → {len(filtered)} match(es)\n")
+        if pages:
+            print(f"Pages      : {','.join(str(page) for page in pages)}")
         ids, docs, metas = zip(*filtered) if filtered else ([], [], [])
     else:
         shown = len(ids)
         print(f"Collection : {collection_name}")
         print(f"Total      : {total} chunks")
         print(f"Showing    : {shown}{'' if not limit else f' of {total}'}")
+        if namespace:
+            print(f"Namespace  : {namespace}")
+        if pages:
+            print(f"Pages      : {','.join(str(page) for page in pages)}")
         print(f"Embeddings : {'yes' if has_embeddings else 'no'}\n")
 
     sep = "─" * 72
@@ -133,6 +140,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional Chroma metadata namespace filter.",
     )
+    parser.add_argument(
+        "--pages",
+        type=parse_pages,
+        default=None,
+        help="Optional comma-separated page_no filter, such as 5,17,21.",
+    )
     return parser.parse_args()
 
 
@@ -156,7 +169,46 @@ def main() -> None:
         full=args.full,
         search=args.search,
         namespace=args.namespace,
+        pages=args.pages,
     )
+
+
+def build_where_filter(
+    *,
+    namespace: str | None,
+    pages: tuple[int, ...] | None,
+) -> dict | None:
+    filters = []
+    if namespace is not None:
+        filters.append({"namespace": namespace})
+    if pages:
+        filters.append({"page_no": {"$in": list(pages)}})
+
+    if not filters:
+        return None
+    if len(filters) == 1:
+        return filters[0]
+    return {"$and": filters}
+
+
+def parse_pages(value: str | None) -> tuple[int, ...] | None:
+    if value is None:
+        return None
+    pages = []
+    for part in value.split(","):
+        stripped = part.strip()
+        if not stripped:
+            continue
+        try:
+            page = int(stripped)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(
+                f"Invalid page number '{stripped}'"
+            ) from exc
+        if page <= 0:
+            raise argparse.ArgumentTypeError("Page numbers must be positive integers")
+        pages.append(page)
+    return tuple(sorted(set(pages))) or None
 
 
 if __name__ == "__main__":
