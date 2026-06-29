@@ -1,0 +1,6 @@
+name: generic
+allowed_nodes: []
+allowed_relationships:
+  constrained: []
+  strict: []
+additional_instructions: ""

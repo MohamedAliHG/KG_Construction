@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # Groq
     groq_api_key: str | None = None
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str | None = None
 
     # Local OpenAI-compatible LLM server
     llm_provider: str = "groq"
@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     batch_size: int = 10
     extraction_mode: str = "tool"
     schema_level: str = "unconstrained"
+    schema_profile_path: str = "config/schema_profiles/generic.yaml"
     node_properties: str = "off"
     relationship_properties: str = "off"
 
@@ -39,9 +40,9 @@ class Settings(BaseSettings):
     document_input_path: str = "data/raw"
     document_chunk_strategy: str = "hybrid"
     document_image_resolution_scale: float = 2.0
-    document_enable_picture_description: bool = True
+    document_enable_picture_description: bool = False
     document_vlm_url: str = "http://localhost:8080"
-    document_vlm_model_name: str = "qwen"
+    document_vlm_model_name: str = "llava"
     document_vlm_timeout: int = 60
     document_vlm_prompt: str = "Describe this image in sentences in a single paragraph."
     document_fixed_character_chunk_size: int = 2000

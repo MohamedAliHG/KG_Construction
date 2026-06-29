@@ -9,6 +9,7 @@ from .schema_profiles import (
     SchemaLevel,
     SchemaProfile,
     build_schema_profile,
+    load_schema_profile_data,
     parse_property_spec,
 )
 from .transformer import (
@@ -26,6 +27,7 @@ __all__ = [
     "SchemaLevel",
     "SchemaProfile",
     "build_schema_profile",
+    "load_schema_profile_data",
     "parse_property_spec",
     "build_llm",
     "build_transformer",

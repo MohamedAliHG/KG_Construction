@@ -64,6 +64,11 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--schema-profile",
+        default=None,
+        help="Path to a YAML schema profile for constrained or strict extraction.",
+    )
+    parser.add_argument(
         "--extraction-mode",
         choices=[mode.value for mode in ExtractionMode],
         default=None,
@@ -104,6 +109,7 @@ def main() -> None:
         pages=args.pages,
         llm_provider=args.llm_provider,
         schema_level=args.schema_level,
+        schema_profile_path=args.schema_profile,
         extraction_mode=args.extraction_mode,
         node_properties=(
             parse_property_spec(args.node_properties)

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import TypeAlias
+
+import yaml
+
+from config import settings
 
 RelationshipSpec: TypeAlias = str | tuple[str, str, str]
 
@@ -21,20 +26,6 @@ class ExtractionMode(StrEnum):
 PropertySpec: TypeAlias = bool | tuple[str, ...]
 
 
-DEFAULT_ALLOWED_NODES: tuple[str, ...] = (
-
-)
-
-DEFAULT_ALLOWED_RELATIONSHIPS: tuple[str, ...] = (
-
-
-)
-
-DEFAULT_STRICT_RELATIONSHIPS: tuple[tuple[str, str, str], ...] = (
-
-)
-
-
 @dataclass(frozen=True, slots=True)
 class SchemaProfile:
     level: SchemaLevel
@@ -42,6 +33,7 @@ class SchemaProfile:
     allowed_relationships: tuple[RelationshipSpec, ...] = ()
     node_properties: PropertySpec = False
     relationship_properties: PropertySpec = False
+    additional_instructions: str = None
     strict_mode: bool = True
 
     def to_transformer_kwargs(self) -> dict[str, object]:
@@ -62,6 +54,10 @@ class SchemaProfile:
                 if isinstance(self.relationship_properties, tuple)
                 else self.relationship_properties
             )
+        kwargs["additional_instructions"] = (
+            self.additional_instructions
+            if self.additional_instructions is not None
+            else "")
         return kwargs
 
 
@@ -101,24 +97,71 @@ def resolve_extraction_mode(value: str | ExtractionMode | None) -> ExtractionMod
     return ExtractionMode(value)
 
 
-def build_schema_profile(level: str | SchemaLevel | None) -> SchemaProfile:
+def build_schema_profile(
+    level: str | SchemaLevel | None,
+    profile_path: str | Path | None = None,
+) -> SchemaProfile:
     resolved = resolve_schema_level(level)
 
     if resolved == SchemaLevel.UNCONSTRAINED:
         return SchemaProfile(level=resolved)
 
+    profile_data = load_schema_profile_data(profile_path or settings.schema_profile_path)
+    allowed_nodes = tuple(profile_data.get("allowed_nodes") or ())
+    relationships = profile_data.get("allowed_relationships") or {}
+
     if resolved == SchemaLevel.CONSTRAINED:
         return SchemaProfile(
             level=resolved,
-            allowed_nodes=DEFAULT_ALLOWED_NODES,
-            allowed_relationships=DEFAULT_ALLOWED_RELATIONSHIPS,
+            allowed_nodes=allowed_nodes,
+            allowed_relationships=tuple(relationships.get("constrained") or ()),
         )
 
     if resolved == SchemaLevel.STRICT:
         return SchemaProfile(
             level=resolved,
-            allowed_nodes=DEFAULT_ALLOWED_NODES,
-            allowed_relationships=DEFAULT_STRICT_RELATIONSHIPS,
+            allowed_nodes=allowed_nodes,
+            allowed_relationships=_parse_strict_relationships(
+                relationships.get("strict") or ()
+            ),
+            additional_instructions=profile_data.get("additional_instructions") or "",
         )
 
     raise ValueError(f"Unsupported schema level: {level!r}")
+
+
+def load_schema_profile_data(profile_path: str | Path | None) -> dict:
+    if profile_path is None:
+        raise ValueError("schema_profile_path is required for constrained or strict schema levels")
+
+    path = Path(profile_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Schema profile file not found: {path}")
+
+    with path.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+
+    if not isinstance(data, dict):
+        raise ValueError(f"Schema profile must be a mapping: {path}")
+    return data
+
+
+def _parse_strict_relationships(raw_relationships) -> tuple[RelationshipSpec, ...]:
+    parsed = []
+    for item in raw_relationships:
+        if isinstance(item, str):
+            parsed.append(item)
+            continue
+        if isinstance(item, dict):
+            try:
+                parsed.append((item["source"], item["type"], item["target"]))
+            except KeyError as exc:
+                raise ValueError(
+                    "Strict relationship mappings require source, type, and target"
+                ) from exc
+            continue
+        if isinstance(item, (list, tuple)) and len(item) == 3:
+            parsed.append((item[0], item[1], item[2]))
+            continue
+        raise ValueError(f"Unsupported strict relationship entry: {item!r}")
+    return tuple(parsed)

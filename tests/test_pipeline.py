@@ -13,12 +13,14 @@ def test_run_async_threads_schema_and_mode(monkeypatch):
         *,
         llm_provider,
         schema_level,
+        schema_profile_path,
         extraction_mode,
         node_properties,
         relationship_properties,
         llm=None,
     ):
         assert schema_level == "strict"
+        assert schema_profile_path == "config/schema_profiles/aviation_maintenance.yaml"
         assert extraction_mode == "prompt"
         assert llm_provider == "local"
         assert node_properties == "off"
@@ -50,6 +52,7 @@ def test_run_async_threads_schema_and_mode(monkeypatch):
             pages=(5, 17),
             llm_provider="local",
             schema_level="strict",
+            schema_profile_path="config/schema_profiles/aviation_maintenance.yaml",
             extraction_mode="prompt",
             node_properties="off",
             relationship_properties="off",

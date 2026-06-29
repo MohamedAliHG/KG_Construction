@@ -57,12 +57,16 @@ def build_transformer(
     *,
     llm_provider: str | None = None,
     schema_level: str | SchemaLevel | None = None,
+    schema_profile_path: str | None = None,
     extraction_mode: str | ExtractionMode | None = None,
     node_properties: str | bool | tuple[str, ...] | list[str] | None = None,
     relationship_properties: str | bool | tuple[str, ...] | list[str] | None = None,
     llm: Any | None = None,
 ) -> LLMGraphTransformer:
-    profile = build_schema_profile(resolve_schema_level(schema_level))
+    profile = build_schema_profile(
+        resolve_schema_level(schema_level),
+        profile_path=schema_profile_path,
+    )
     mode = resolve_extraction_mode(extraction_mode)
     if llm is not None:
         model = llm
@@ -77,6 +81,12 @@ def build_transformer(
         )
         node_prop_spec = False
         rel_prop_spec = False
+
+    logger.info(
+        "Building schema profile | node_properties=%s | relationship_properties=%s",
+        node_prop_spec,
+        rel_prop_spec,
+    )
 
     profile = replace(
         profile,
@@ -102,6 +112,7 @@ async def extract_graph_documents(
     *,
     llm_provider: str | None = None,
     schema_level: str | SchemaLevel | None = None,
+    schema_profile_path: str | None = None,
     extraction_mode: str | ExtractionMode | None = None,
     node_properties: str | bool | tuple[str, ...] | list[str] | None = None,
     relationship_properties: str | bool | tuple[str, ...] | list[str] | None = None,
@@ -110,6 +121,7 @@ async def extract_graph_documents(
     transformer = build_transformer(
         llm_provider=llm_provider,
         schema_level=schema_level,
+        schema_profile_path=schema_profile_path,
         extraction_mode=extraction_mode,
         node_properties=node_properties,
         relationship_properties=relationship_properties,
@@ -130,6 +142,7 @@ def extract_graph_documents_sync(
     *,
     llm_provider: str | None = None,
     schema_level: str | SchemaLevel | None = None,
+    schema_profile_path: str | None = None,
     extraction_mode: str | ExtractionMode | None = None,
     node_properties: str | bool | tuple[str, ...] | list[str] | None = None,
     relationship_properties: str | bool | tuple[str, ...] | list[str] | None = None,
@@ -140,6 +153,7 @@ def extract_graph_documents_sync(
             documents,
             llm_provider=llm_provider,
             schema_level=schema_level,
+            schema_profile_path=schema_profile_path,
             extraction_mode=extraction_mode,
             node_properties=node_properties,
             relationship_properties=relationship_properties,
