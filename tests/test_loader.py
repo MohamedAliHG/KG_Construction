@@ -55,6 +55,10 @@ def test_load_chunks_preserves_metadata(populated_chroma):
     for doc in docs:
         assert doc.metadata["id"] in {"1", "2"}
         assert doc.metadata["chunk_id"] in {"1", "2"}
+        assert doc.metadata["source_document_id"] in {"doc1", "doc2"}
+        assert doc.metadata["source_document_name"] in {"doc1", "doc2"}
+        assert isinstance(doc.metadata["chunk_index"], int)
+        assert isinstance(doc.metadata["loaded_index"], int)
         assert doc.metadata["embedding_model"]
         assert doc.metadata["embedding_dim"] == 384
         assert len(doc.metadata["embedding"]) == 384

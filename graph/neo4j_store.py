@@ -24,24 +24,47 @@ def _safe_type_name(value: str | None, fallback: str) -> str:
     return cleaned or fallback
 
 
-def _source_document_payload(graph_doc: GraphDocument) -> dict[str, Any] | None:
+def _source_chunk_payload(graph_doc: GraphDocument) -> dict[str, Any] | None:
     if graph_doc.source is None:
         return None
 
     metadata = dict(graph_doc.source.metadata or {})
-    source_id = metadata.get("id")
-    if not source_id:
-        source_id = hashlib.md5(graph_doc.source.page_content.encode("utf-8")).hexdigest()
-        metadata["id"] = source_id
+    chunk_id = metadata.get("chunk_id") or metadata.get("id")
+    if not chunk_id:
+        chunk_id = hashlib.md5(graph_doc.source.page_content.encode("utf-8")).hexdigest()
+        metadata["chunk_id"] = chunk_id
 
     embedding = metadata.pop("embedding", None)
     embedding_model = metadata.pop("embedding_model", None)
     embedding_dim = metadata.pop("embedding_dim", None)
+    chunk_index = _coerce_int(metadata.get("chunk_index"))
+    loaded_index = _coerce_int(metadata.get("loaded_index"))
+    sequence_index = chunk_index if chunk_index is not None else loaded_index
+    document_id = _resolve_source_document_id(metadata)
+    document_name = _resolve_source_document_name(metadata, document_id)
+
+    chunk_metadata = dict(metadata)
+    chunk_metadata.pop("id", None)
+    chunk_metadata["chunk_id"] = chunk_id
+    chunk_metadata["source_document_id"] = document_id
+
+    document_metadata = _source_document_metadata(
+        metadata=metadata,
+        document_id=document_id,
+        document_name=document_name,
+    )
 
     return {
-        "id": source_id,
+        "document_id": document_id,
+        "document_name": document_name,
+        "document_metadata": document_metadata,
+        "chunk_id": chunk_id,
         "text": graph_doc.source.page_content,
-        "metadata": metadata,
+        "chunk_metadata": chunk_metadata,
+        "chunk_index": sequence_index,
+        "previous_chunk_index": sequence_index - 1 if sequence_index and sequence_index > 0 else None,
+        "next_chunk_index": sequence_index + 1 if sequence_index is not None else None,
+        "is_first_chunk": sequence_index == 0,
         "embedding": embedding,
         "embedding_model": embedding_model,
         "embedding_dim": embedding_dim,
@@ -90,8 +113,8 @@ def get_graph() -> Neo4jGraph:
     return _graph
 
 
-def create_document_vector_index(
-    index_name: str = "document_embedding_index",
+def create_chunk_vector_index(
+    index_name: str = "chunk_embedding_index",
     dimensions: int = 384,
     similarity_function: str = "cosine",
 ) -> None:
@@ -101,8 +124,8 @@ def create_document_vector_index(
 
     query = f"""
     CREATE VECTOR INDEX {index_name} IF NOT EXISTS
-    FOR (d:Document)
-    ON (d.embedding)
+    FOR (c:Chunk)
+    ON (c.embedding)
     OPTIONS {{
       indexConfig: {{
         `vector.dimensions`: {dimensions},
@@ -112,7 +135,7 @@ def create_document_vector_index(
     """
     get_graph().query(query)
     logger.info(
-        "Created/verified vector index '%s' on (:Document).embedding (dimensions=%d, similarity=%s)",
+        "Created/verified vector index '%s' on (:Chunk).embedding (dimensions=%d, similarity=%s)",
         index_name,
         dimensions,
         similarity_function,
@@ -123,21 +146,43 @@ def add_graph_documents(graph_docs: list[GraphDocument]) -> None:
     g = get_graph()
 
     for graph_doc in graph_docs:
-        source_payload = _source_document_payload(graph_doc)
+        source_payload = _source_chunk_payload(graph_doc)
         if source_payload is not None:
             g.query(
                 """
-                MERGE (d:Document {id: $id})
-                SET d.text = $text
-                SET d += $metadata
+                MERGE (d:Document {id: $document_id})
+                SET d += $document_metadata
+                SET d.name = $document_name
+                MERGE (c:Chunk {id: $chunk_id})
+                SET c.text = $text
+                SET c += $chunk_metadata
+                FOREACH (_ IN CASE WHEN $chunk_index IS NOT NULL THEN [1] ELSE [] END |
+                    SET c.chunk_index = $chunk_index
+                )
                 FOREACH (_ IN CASE WHEN $embedding IS NOT NULL THEN [1] ELSE [] END |
-                    SET d.embedding = $embedding
+                    SET c.embedding = $embedding
                 )
                 FOREACH (_ IN CASE WHEN $embedding_model IS NOT NULL THEN [1] ELSE [] END |
-                    SET d.embedding_model = $embedding_model
+                    SET c.embedding_model = $embedding_model
                 )
                 FOREACH (_ IN CASE WHEN $embedding_dim IS NOT NULL THEN [1] ELSE [] END |
-                    SET d.embedding_dim = $embedding_dim
+                    SET c.embedding_dim = $embedding_dim
+                )
+                MERGE (c)-[:PART_OF]->(d)
+                FOREACH (_ IN CASE WHEN $is_first_chunk THEN [1] ELSE [] END |
+                    MERGE (d)-[:FIRST_CHUNK]->(c)
+                )
+                WITH d, c
+                OPTIONAL MATCH (d)<-[:PART_OF]-(previous:Chunk)
+                WHERE previous.chunk_index = $previous_chunk_index
+                FOREACH (_ IN CASE WHEN previous IS NOT NULL THEN [1] ELSE [] END |
+                    MERGE (previous)-[:NEXT_CHUNK]->(c)
+                )
+                WITH d, c
+                OPTIONAL MATCH (d)<-[:PART_OF]-(next:Chunk)
+                WHERE next.chunk_index = $next_chunk_index
+                FOREACH (_ IN CASE WHEN next IS NOT NULL THEN [1] ELSE [] END |
+                    MERGE (c)-[:NEXT_CHUNK]->(next)
                 )
                 """,
                 source_payload,
@@ -154,15 +199,15 @@ def add_graph_documents(graph_docs: list[GraphDocument]) -> None:
                 SET n:$(row.label)
                 WITH n, row
                 FOREACH (_ IN CASE WHEN $has_source THEN [1] ELSE [] END |
-                    MERGE (d:Document {id: $document_id})
-                    MERGE (d)-[:MENTIONS]->(n)
+                    MERGE (c:Chunk {id: $chunk_id})
+                    MERGE (c)-[:HAS_ENTITY]->(n)
                 )
                 RETURN count(n) AS nodes_written
                 """,
                 {
                     "rows": node_rows,
                     "has_source": source_payload is not None,
-                    "document_id": source_payload["id"] if source_payload else None,
+                    "chunk_id": source_payload["chunk_id"] if source_payload else None,
                 },
             )
 
@@ -220,3 +265,55 @@ def _validate_similarity_function(similarity_function: str) -> str:
             f"Unsupported similarity_function '{similarity_function}'. Allowed: {allowed}"
         )
     return normalized
+
+
+def _resolve_source_document_id(metadata: dict[str, Any]) -> str:
+    for key in ("source_document_id", "document_id", "doc_id", "source_path", "source", "source_name"):
+        value = metadata.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return "document"
+
+
+def _resolve_source_document_name(metadata: dict[str, Any], document_id: str) -> str:
+    for key in ("source_document_name", "source_name", "source", "source_path"):
+        value = metadata.get(key)
+        if value in (None, ""):
+            continue
+        if key == "source_path":
+            return str(value).rstrip("/").split("/")[-1] or document_id
+        return str(value)
+    return document_id
+
+
+def _source_document_metadata(
+    *,
+    metadata: dict[str, Any],
+    document_id: str,
+    document_name: str,
+) -> dict[str, Any]:
+    document_metadata = {
+        "source_document_id": document_id,
+        "source_document_name": document_name,
+    }
+    for key in (
+        "document_id",
+        "doc_id",
+        "source_path",
+        "source_name",
+        "source",
+        "namespace",
+    ):
+        value = metadata.get(key)
+        if value not in (None, ""):
+            document_metadata[key] = value
+    return document_metadata
+
+
+def _coerce_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

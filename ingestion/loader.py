@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Iterator, Sequence
 
 import chromadb
@@ -69,10 +70,22 @@ def load_chunks(
 
         for idx, (chunk_id, text, meta) in enumerate(zip(ids, documents, metadatas)):
             metadata = dict(meta or {})
+            absolute_index = offset + idx
             if chunk_id and not metadata.get("id"):
                 metadata["id"] = chunk_id
             if chunk_id and not metadata.get("chunk_id"):
                 metadata["chunk_id"] = chunk_id
+            if metadata.get("chunk_index") in (None, ""):
+                metadata["chunk_index"] = absolute_index
+            if metadata.get("loaded_index") in (None, ""):
+                metadata["loaded_index"] = absolute_index
+            if not metadata.get("source_document_id"):
+                metadata["source_document_id"] = _derive_source_document_id(
+                    metadata,
+                    collection_name,
+                )
+            if not metadata.get("source_document_name"):
+                metadata["source_document_name"] = _derive_source_document_name(metadata)
 
             embedding = _coerce_embedding(embeddings[idx] if idx < len(embeddings) else None)
             if embedding is not None:
@@ -149,6 +162,25 @@ def _coerce_embedding(value) -> list[float] | None:
     except TypeError:
         logger.debug("Skipping unsupported embedding value: %r", value)
         return None
+
+
+def _derive_source_document_id(metadata: dict, collection_name: str) -> str:
+    for key in ("document_id", "doc_id", "source_path", "source", "source_name"):
+        value = metadata.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return f"{collection_name}:document"
+
+
+def _derive_source_document_name(metadata: dict) -> str:
+    for key in ("source_name", "source_path", "source_document_id", "doc_id", "source"):
+        value = metadata.get(key)
+        if value in (None, ""):
+            continue
+        if key == "source_path":
+            return Path(str(value)).name
+        return str(value)
+    return "document"
 
 
 def _safe_result_list(value):

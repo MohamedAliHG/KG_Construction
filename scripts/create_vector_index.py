@@ -1,16 +1,17 @@
-"""Create the Neo4j vector index for Document embeddings.
+"""Create the Neo4j vector index for Chunk embeddings.
 
 Verification query:
 
 ```cypher
 CALL db.index.vector.queryNodes(
-  'document_embedding_index',
+  'chunk_embedding_index',
   5,
   $query_embedding
 )
 YIELD node, score
-MATCH (node)-[:MENTIONS]->(e:Entity)
-RETURN node.id, node.text, score, collect(e.name) AS entities
+OPTIONAL MATCH (node)-[:PART_OF]->(doc:Document)
+OPTIONAL MATCH (node)-[:HAS_ENTITY]->(e:Entity)
+RETURN doc.id AS document_id, node.id AS chunk_id, node.text AS text, score, collect(e.name) AS entities
 LIMIT 5;
 ```
 """
@@ -23,18 +24,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from graph import create_document_vector_index
+from graph import create_chunk_vector_index
 
 DEFAULT_DIMENSIONS = 384
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Create a Neo4j vector index for :Document embeddings."
+        description="Create a Neo4j vector index for :Chunk embeddings."
     )
     parser.add_argument(
         "--index-name",
-        default="document_embedding_index",
+        default="chunk_embedding_index",
         help="Neo4j vector index name.",
     )
     parser.add_argument(
@@ -54,7 +55,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    create_document_vector_index(
+    create_chunk_vector_index(
         index_name=args.index_name,
         dimensions=args.dimensions,
         similarity_function=args.similarity_function,
