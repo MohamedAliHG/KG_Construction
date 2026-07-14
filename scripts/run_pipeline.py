@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from graph import clean_graph
 from pipeline.build_graph import run
+from graph.normalization import NormalizationMode
 from graph.schema_profiles import ExtractionMode, SchemaLevel, parse_property_spec
 
 logging.basicConfig(
@@ -90,6 +91,12 @@ def parse_args() -> argparse.Namespace:
             "such as start_date."
         ),
     )
+    parser.add_argument(
+        "--normalization",
+        choices=[mode.value for mode in NormalizationMode],
+        default=None,
+        help="Graph normalization mode: off, basic, or profile.",
+    )
     return parser.parse_args()
 
 
@@ -121,6 +128,7 @@ def main() -> None:
             if args.relationship_properties is not None
             else None
         ),
+        normalization_mode=args.normalization,
     )
 
     print(

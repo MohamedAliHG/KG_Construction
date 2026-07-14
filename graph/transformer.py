@@ -23,6 +23,22 @@ from graph.schema_profiles import (
 
 logger = logging.getLogger(__name__)
 
+PROPERTY_TOOL_FORMAT_INSTRUCTIONS = """
+
+Tool-call property format requirement:
+- When node or relationship properties are enabled, the tool schema requires
+  "properties" to be a list of key/value objects, not a JSON object.
+- Correct node example:
+  properties is a list containing key/value entries such as key=code value=3310C03
+  and key=name value=3310C03.
+- Incorrect node example:
+  properties is a dictionary/object such as code=3310C03, name=3310C03.
+- Correct relationship property example:
+  properties is a list containing a key/value entry such as
+  key=raw_text value=Go to figure 2-9, block 1.
+- If there are no properties for a node or relationship, omit "properties" or set it to null.
+"""
+
 
 def build_llm(provider: str | None = None) -> Any:
     """Construct the configured chat model used for graph extraction."""
@@ -92,6 +108,10 @@ def build_transformer(
         profile,
         node_properties=node_prop_spec,
         relationship_properties=rel_prop_spec,
+        additional_instructions=_with_property_tool_format_instructions(
+            profile.additional_instructions,
+            enabled=mode == ExtractionMode.TOOL and bool(node_prop_spec or rel_prop_spec),
+        ),
     )
 
     kwargs = profile.to_transformer_kwargs()
@@ -105,6 +125,17 @@ def build_transformer(
         profile.level.value,
     )
     return LLMGraphTransformer(**kwargs)
+
+
+def _with_property_tool_format_instructions(
+    additional_instructions: str | None,
+    *,
+    enabled: bool,
+) -> str:
+    text = additional_instructions or ""
+    if not enabled or "Tool-call property format requirement" in text:
+        return text
+    return text.rstrip() + PROPERTY_TOOL_FORMAT_INSTRUCTIONS
 
 
 async def extract_graph_documents(

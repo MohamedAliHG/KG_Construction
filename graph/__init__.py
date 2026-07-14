@@ -4,6 +4,11 @@ from .neo4j_store import (
     create_chunk_vector_index,
     get_graph,
 )
+from .normalization import (
+    NormalizationMode,
+    NormalizationReport,
+    normalize_graph_documents,
+)
 from .schema_profiles import (
     ExtractionMode,
     SchemaLevel,
@@ -24,6 +29,9 @@ __all__ = [
     "add_graph_documents",
     "clean_graph",
     "create_chunk_vector_index",
+    "NormalizationMode",
+    "NormalizationReport",
+    "normalize_graph_documents",
     "ExtractionMode",
     "SchemaLevel",
     "SchemaProfile",

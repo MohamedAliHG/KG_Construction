@@ -3,4 +3,15 @@ allowed_nodes: []
 allowed_relationships:
   constrained: []
   strict: []
-additional_instructions: ""
+normalization:
+  preserve_raw: true
+  drop_unknown_nodes: false
+  drop_unknown_relationships: false
+  default_transforms:
+    - fix_pdf_hyphenation
+    - collapse_whitespace
+    - strip
+additional_instructions: |
+  Extract only entities and relationships that are explicitly supported by the
+  source text. Use stable, human-readable node ids and avoid generic placeholder
+  ids such as Entity1, Node1, or Relationship1. Do not invent missing facts.

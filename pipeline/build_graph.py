@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 
 from config import settings
 from ingestion import load_chunks
-from graph import add_graph_documents, extract_graph_documents
+from graph import add_graph_documents, extract_graph_documents, normalize_graph_documents
+from graph.normalization import NormalizationMode
 from graph.schema_profiles import ExtractionMode, SchemaLevel
 
 logger = logging.getLogger(__name__)
@@ -18,15 +19,22 @@ class PipelineStats:
     batches_processed: int = 0
     chunks_processed: int = 0
     graph_docs_created: int = 0
+    nodes_dropped: int = 0
+    nodes_merged: int = 0
+    relationships_dropped: int = 0
+    relationships_reversed: int = 0
     elapsed_seconds: float = 0.0
     errors: list[str] = field(default_factory=list)
 
     def log_summary(self) -> None:
         logger.info(
-            "Pipeline complete | batches=%d | chunks=%d | graph_docs=%d | time=%.1fs | errors=%d",
+            "Pipeline complete | batches=%d | chunks=%d | graph_docs=%d | "
+            "nodes_dropped=%d | relationships_dropped=%d | time=%.1fs | errors=%d",
             self.batches_processed,
             self.chunks_processed,
             self.graph_docs_created,
+            self.nodes_dropped,
+            self.relationships_dropped,
             self.elapsed_seconds,
             len(self.errors),
         )
@@ -46,6 +54,7 @@ async def run_async(
     extraction_mode: str | ExtractionMode | None = None,
     node_properties: str | bool | tuple[str, ...] | list[str] | None = None,
     relationship_properties: str | bool | tuple[str, ...] | list[str] | None = None,
+    normalization_mode: str | NormalizationMode | None = None,
 ) -> PipelineStats:
  
     stats = PipelineStats()
@@ -63,6 +72,10 @@ async def run_async(
         if relationship_properties is None
         else relationship_properties
     )
+    resolved_normalization_mode = (
+        settings.normalization_mode if normalization_mode is None else normalization_mode
+    )
+    resolved_schema_profile_path = schema_profile_path or settings.schema_profile_path
 
     for batch in load_chunks(
         collection_name=collection_name,
@@ -78,16 +91,25 @@ async def run_async(
                 batch,
                 llm_provider=llm_provider,
                 schema_level=resolved_schema_level,
-                schema_profile_path=schema_profile_path,
+                schema_profile_path=resolved_schema_profile_path,
                 extraction_mode=resolved_extraction_mode,
                 node_properties=resolved_node_properties,
                 relationship_properties=resolved_relationship_properties,
+            )
+            graph_docs, normalization_report = normalize_graph_documents(
+                graph_docs,
+                mode=resolved_normalization_mode,
+                schema_profile_path=resolved_schema_profile_path,
             )
             add_graph_documents(graph_docs)
 
             stats.batches_processed += 1
             stats.chunks_processed += len(batch)
             stats.graph_docs_created += len(graph_docs)
+            stats.nodes_dropped += normalization_report.nodes_dropped
+            stats.nodes_merged += normalization_report.nodes_merged
+            stats.relationships_dropped += normalization_report.relationships_dropped
+            stats.relationships_reversed += normalization_report.relationships_reversed
 
         except Exception as exc: 
             msg = f"Batch {batch_num} failed: {exc}"
@@ -110,6 +132,7 @@ def run(
     extraction_mode: str | ExtractionMode | None = None,
     node_properties: str | bool | tuple[str, ...] | list[str] | None = None,
     relationship_properties: str | bool | tuple[str, ...] | list[str] | None = None,
+    normalization_mode: str | NormalizationMode | None = None,
 ) -> PipelineStats:
     return asyncio.run(
         run_async(
@@ -123,5 +146,6 @@ def run(
             extraction_mode=extraction_mode,
             node_properties=node_properties,
             relationship_properties=relationship_properties,
+            normalization_mode=normalization_mode,
         )
     )

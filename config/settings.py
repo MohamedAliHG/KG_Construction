@@ -25,8 +25,8 @@ class Settings(BaseSettings):
 
     # ChromaDB
     chroma_path: str = "./chroma_db"
-    chroma_collection: str = "collection_demo"
-    chroma_namespace: str | None = "default"
+    chroma_collection: str = "collection_100page"
+    chroma_namespace: str | None = "CaseDemo100"
 
     # KG pipeline
     batch_size: int = 10
@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     schema_profile_path: str = "config/schema_profiles/generic.yaml"
     node_properties: str = "off"
     relationship_properties: str = "off"
+    normalization_mode: str = "profile"
 
     # Document indexing pipeline
     document_input_path: str = "data/raw"
