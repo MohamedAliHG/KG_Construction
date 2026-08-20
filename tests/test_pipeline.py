@@ -48,7 +48,8 @@ def test_run_async_threads_schema_and_mode(monkeypatch):
             relationships_reversed=4,
         )
 
-    def fake_add_graph_documents(graph_docs):
+    def fake_add_graph_documents(graph_docs, schema_profile_path=None):
+        assert schema_profile_path == "config/schema_profiles/generic.yaml"
         captured.append(list(graph_docs))
 
     monkeypatch.setattr(pipeline_module, "load_chunks", fake_load_chunks)

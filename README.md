@@ -170,6 +170,23 @@ Property extraction is only supported in `tool` mode.
 
 The pipeline processes batches sequentially to keep LLM usage predictable.
 
+### Config-driven entity provenance
+
+For each normalized entity associated with a source chunk, the Neo4j writer creates
+`MENTIONS_ENTITY`. It creates `DESCRIBES_ENTITY` only when a rule in the active
+schema profile `provenance.description_rules` matches the chunk text and entity
+properties. Unmatched entities remain mention-only.
+
+Rules support `all`, `any`, and `not` composition plus `text_regex`,
+`text_contains`, `metadata_equals`, `metadata_in`, and
+`entity_property_exists` predicates. Regex rules may interpolate escaped entity
+values such as `{entity.figure_number}`. Each provenance edge records the matching
+`rule_id`; description rules may add evidence and confidence properties.
+
+Set `provenance.keep_legacy_has_entity: true` while existing consumers still use
+`HAS_ENTITY`. Precise retrieval should use `DESCRIBES_ENTITY`; reference and audit
+queries should use `MENTIONS_ENTITY`.
+
 ## End-to-End Workflow
 
 The recommended setup is:

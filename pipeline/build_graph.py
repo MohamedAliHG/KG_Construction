@@ -101,7 +101,10 @@ async def run_async(
                 mode=resolved_normalization_mode,
                 schema_profile_path=resolved_schema_profile_path,
             )
-            add_graph_documents(graph_docs)
+            add_graph_documents(
+                graph_docs,
+                schema_profile_path=resolved_schema_profile_path,
+            )
 
             stats.batches_processed += 1
             stats.chunks_processed += len(batch)

@@ -114,4 +114,16 @@ def test_add_graph_documents_links_chunks_to_entities(monkeypatch):
     assert "MERGE (c)-[:PART_OF]->(d)" in queries
     assert "MERGE (d)-[:FIRST_CHUNK]->(c)" in queries
     assert "MERGE (c)-[:HAS_ENTITY]->(n)" in queries
-    assert "MENTIONS" not in queries
+    assert "provenance.label" in queries
+
+    node_query_params = next(
+        params for query, params in fake_graph.queries if "UNWIND $rows AS row" in query
+    )
+    provenance = node_query_params["rows"][0]["provenance"]
+    assert provenance == [
+        {
+            "label": "MENTIONS_ENTITY",
+            "type": "MENTIONS_ENTITY",
+            "properties": {"rule_id": "default"},
+        }
+    ]
