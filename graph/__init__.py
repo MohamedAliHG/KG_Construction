@@ -1,3 +1,4 @@
+from .consolidation import ConsolidationReport, consolidate_graph_documents
 from .neo4j_store import (
     add_graph_documents,
     clean_graph,
@@ -25,6 +26,8 @@ from .transformer import (
 )
 
 __all__ = [
+    "ConsolidationReport",
+    "consolidate_graph_documents",
     "get_graph",
     "add_graph_documents",
     "clean_graph",

@@ -187,6 +187,20 @@ Set `provenance.keep_legacy_has_entity: true` while existing consumers still use
 `HAS_ENTITY`. Precise retrieval should use `DESCRIBES_ENTITY`; reference and audit
 queries should use `MENTIONS_ENTITY`.
 
+### Config-driven relationship consolidation
+
+After normalization, `graph.consolidation.consolidate_graph_documents()` applies
+the active profile `consolidation` policy before Neo4j persistence. Reference rules
+extract named regex captures and can create canonical target nodes and routing
+relationships. Structural rules derive parent links from canonical IDs. Safe
+co-occurrence rules fire only when configured source and target counts are
+unambiguous.
+
+Every derived relationship records `derived: true` and its `derivation_rule`.
+Profiles may render captured values into node IDs, node properties, and relationship
+properties. Set `consolidation.enabled: false` for profiles that require no
+deterministic completion.
+
 ## End-to-End Workflow
 
 The recommended setup is:
