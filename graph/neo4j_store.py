@@ -9,6 +9,8 @@ from langchain_neo4j import Neo4jGraph
 from langchain_community.graphs.graph_document import GraphDocument
 
 from config import settings
+from graph.provenance import evaluate_provenance
+from graph.schema_profiles import load_schema_profile_data
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +73,10 @@ def _source_chunk_payload(graph_doc: GraphDocument) -> dict[str, Any] | None:
     }
 
 
-def _node_rows(graph_doc: GraphDocument) -> list[dict[str, Any]]:
+def _node_rows(
+    graph_doc: GraphDocument,
+    provenance_config: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for node in graph_doc.nodes:
         rows.append(
@@ -80,6 +85,22 @@ def _node_rows(graph_doc: GraphDocument) -> list[dict[str, Any]]:
                 "type": node.type,
                 "label": _safe_type_name(node.type, "Entity"),
                 "properties": node.properties or {},
+                "provenance": [
+                    {
+                        "label": _safe_type_name(decision.relationship_type, "MENTIONS_ENTITY"),
+                        "type": decision.relationship_type,
+                        "properties": {"rule_id": decision.rule_id, **decision.properties},
+                    }
+                    for decision in (
+                        evaluate_provenance(
+                            source=graph_doc.source,
+                            node=node,
+                            config=provenance_config,
+                        )
+                        if graph_doc.source is not None
+                        else ()
+                    )
+                ],
             }
         )
     return rows
@@ -142,8 +163,15 @@ def create_chunk_vector_index(
     )
 
 
-def add_graph_documents(graph_docs: list[GraphDocument]) -> None:
+def add_graph_documents(
+    graph_docs: list[GraphDocument],
+    schema_profile_path: str | None = None,
+) -> None:
     g = get_graph()
+    profile_path = schema_profile_path or settings.schema_profile_path
+    profile_data = load_schema_profile_data(profile_path)
+    provenance_config = profile_data.get("provenance") or {}
+    keep_legacy_has_entity = bool(provenance_config.get("keep_legacy_has_entity", True))
 
     for graph_doc in graph_docs:
         source_payload = _source_chunk_payload(graph_doc)
@@ -188,7 +216,7 @@ def add_graph_documents(graph_docs: list[GraphDocument]) -> None:
                 source_payload,
             )
 
-        node_rows = _node_rows(graph_doc)
+        node_rows = _node_rows(graph_doc, provenance_config)
         if node_rows:
             g.query(
                 """
@@ -198,15 +226,22 @@ def add_graph_documents(graph_docs: list[GraphDocument]) -> None:
                 SET n.type = row.type
                 SET n:$(row.label)
                 WITH n, row
-                FOREACH (_ IN CASE WHEN $has_source THEN [1] ELSE [] END |
+                FOREACH (_ IN CASE WHEN $has_source AND $keep_legacy_has_entity THEN [1] ELSE [] END |
                     MERGE (c:Chunk {id: $chunk_id})
                     MERGE (c)-[:HAS_ENTITY]->(n)
                 )
+                WITH n, row
+                UNWIND CASE WHEN $has_source THEN row.provenance ELSE [] END AS provenance
+                MATCH (c:Chunk {id: $chunk_id})
+                MERGE (c)-[p:$(provenance.label)]->(n)
+                SET p += provenance.properties
+                SET p.type = provenance.type
                 RETURN count(n) AS nodes_written
                 """,
                 {
                     "rows": node_rows,
                     "has_source": source_payload is not None,
+                    "keep_legacy_has_entity": keep_legacy_has_entity,
                     "chunk_id": source_payload["chunk_id"] if source_payload else None,
                 },
             )

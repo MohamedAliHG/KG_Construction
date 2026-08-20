@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -190,6 +191,12 @@ def _normalize_node(
         rule=rule,
         context={"id": raw_id, "type": type_name, **properties},
     )
+    properties = _apply_identity_rules(
+        properties,
+        raw_id=raw_id,
+        type_name=type_name,
+        rule=rule,
+    )
     node_id = _build_node_id(raw_id, properties, rule, config)
 
     if _matches_any(node_id, _as_list(rule.get("reject_id_patterns") if rule else None)):
@@ -201,6 +208,17 @@ def _normalize_node(
         report.missing_required_property_count += 1
         report.add_warning(
             f"Dropped {type_name} node '{node_id}' missing required properties: {', '.join(missing)}"
+        )
+        return None
+
+    invalid_patterns = _invalid_required_property_patterns(
+        properties,
+        rule.get("required_property_patterns") if rule else None,
+    )
+    if invalid_patterns:
+        report.add_warning(
+            f"Dropped {type_name} node '{node_id}' with invalid properties: "
+            + ", ".join(invalid_patterns)
         )
         return None
 
@@ -463,6 +481,67 @@ def _derive_property_value(spec: Any, context: dict[str, Any]) -> str | None:
     return text
 
 
+def _apply_identity_rules(
+    properties: dict[str, Any],
+    *,
+    raw_id: str,
+    type_name: str,
+    rule: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not rule:
+        return properties
+
+    identity_rules = _as_list(rule.get("identity_rules"))
+    for raw_identity_rule in identity_rules:
+        if not isinstance(raw_identity_rule, dict):
+            raise ValueError("normalization identity_rules entries must be mappings")
+        source_name = str(raw_identity_rule.get("source") or "id")
+        source_value = raw_id if source_name == "id" else properties.get(source_name)
+        if source_value in (None, ""):
+            continue
+        pattern = raw_identity_rule.get("regex")
+        if pattern in (None, ""):
+            raise ValueError("normalization identity rule requires regex")
+        match = re.fullmatch(str(pattern), str(source_value), re.IGNORECASE)
+        if match is None:
+            continue
+
+        context = {
+            "id": raw_id,
+            "type": type_name,
+            **properties,
+            **{key: value for key, value in match.groupdict().items() if value is not None},
+        }
+        updated = dict(properties)
+        set_properties = raw_identity_rule.get("set_properties") or {}
+        if not isinstance(set_properties, dict):
+            raise ValueError("normalization identity rule set_properties must be a mapping")
+        for key, spec in set_properties.items():
+            value = _derive_property_value(spec, {**context, **updated})
+            if value not in (None, ""):
+                updated[str(key)] = value
+        for key in _as_list(raw_identity_rule.get("remove_properties")):
+            updated.pop(str(key), None)
+        return updated
+    return properties
+
+
+def _invalid_required_property_patterns(
+    properties: dict[str, Any],
+    raw_patterns: Any,
+) -> list[str]:
+    if raw_patterns in (None, {}):
+        return []
+    if not isinstance(raw_patterns, dict):
+        raise ValueError("required_property_patterns must be a mapping")
+
+    invalid: list[str] = []
+    for key, patterns in raw_patterns.items():
+        value = properties.get(str(key))
+        if value in (None, "") or not _matches_any(str(value), _as_list(patterns)):
+            invalid.append(str(key))
+    return invalid
+
 def _build_node_id(
     raw_id: str,
     properties: dict[str, Any],
@@ -522,6 +601,24 @@ def _apply_transform(value: str, transform: Any) -> str:
         if "regex_replace" in transform:
             spec = transform["regex_replace"] or {}
             return re.sub(str(spec.get("pattern", "")), str(spec.get("replacement", "")), value)
+        if "digest" in transform:
+            spec = transform["digest"] or {}
+            algorithm = str(spec.get("algorithm") or "sha256")
+            try:
+                digest = hashlib.new(algorithm, value.encode("utf-8")).hexdigest()
+            except ValueError as exc:
+                raise ValueError(
+                    f"Unsupported normalization digest algorithm: {algorithm}"
+                ) from exc
+            length = spec.get("length")
+            if length is None:
+                return digest
+            length = int(length)
+            if length < 1 or length > len(digest):
+                raise ValueError(
+                    f"normalization digest length must be between 1 and {len(digest)}"
+                )
+            return digest[:length]
         return value
 
     name = str(transform)

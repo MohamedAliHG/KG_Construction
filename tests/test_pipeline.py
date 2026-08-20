@@ -48,12 +48,20 @@ def test_run_async_threads_schema_and_mode(monkeypatch):
             relationships_reversed=4,
         )
 
-    def fake_add_graph_documents(graph_docs):
+    def fake_consolidate_graph_documents(graph_docs, *, schema_profile_path):
+        assert schema_profile_path == "config/schema_profiles/generic.yaml"
+        return list(graph_docs), SimpleNamespace(nodes_created=5, relationships_created=6)
+
+    def fake_add_graph_documents(graph_docs, schema_profile_path=None):
+        assert schema_profile_path == "config/schema_profiles/generic.yaml"
         captured.append(list(graph_docs))
 
     monkeypatch.setattr(pipeline_module, "load_chunks", fake_load_chunks)
     monkeypatch.setattr(pipeline_module, "extract_graph_documents", fake_extract_graph_documents)
     monkeypatch.setattr(pipeline_module, "normalize_graph_documents", fake_normalize_graph_documents)
+    monkeypatch.setattr(
+        pipeline_module, "consolidate_graph_documents", fake_consolidate_graph_documents
+    )
     monkeypatch.setattr(pipeline_module, "add_graph_documents", fake_add_graph_documents)
 
     stats = asyncio.run(
@@ -80,5 +88,7 @@ def test_run_async_threads_schema_and_mode(monkeypatch):
     assert stats.nodes_merged == 2
     assert stats.relationships_dropped == 3
     assert stats.relationships_reversed == 4
+    assert stats.nodes_derived == 5
+    assert stats.relationships_derived == 6
     assert len(captured) == 1
     assert len(captured[0]) == 2

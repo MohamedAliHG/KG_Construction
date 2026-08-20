@@ -170,6 +170,43 @@ Property extraction is only supported in `tool` mode.
 
 The pipeline processes batches sequentially to keep LLM usage predictable.
 
+### Config-driven entity provenance
+
+For each normalized entity associated with a source chunk, the Neo4j writer creates
+`MENTIONS_ENTITY`. It creates `DESCRIBES_ENTITY` only when a rule in the active
+schema profile `provenance.description_rules` matches the chunk text and entity
+properties. Unmatched entities remain mention-only.
+
+Rules support `all`, `any`, and `not` composition plus `text_regex`,
+`text_contains`, `metadata_equals`, `metadata_in`, and
+`entity_property_exists` predicates. Regex rules may interpolate escaped entity
+values such as `{entity.figure_number}`. Each provenance edge records the matching
+`rule_id`; description rules may add evidence and confidence properties.
+
+Set `provenance.keep_legacy_has_entity: true` while existing consumers still use
+`HAS_ENTITY`. Precise retrieval should use `DESCRIBES_ENTITY`; reference and audit
+queries should use `MENTIONS_ENTITY`.
+
+### Config-driven relationship consolidation
+
+After normalization, `graph.consolidation.consolidate_graph_documents()` applies
+the active profile `consolidation` policy before Neo4j persistence.
+`source_text_entity_rules` create canonical entities from explicit headings and
+captions in the chunk itself, allowing provenance rules to mark the chunk with
+`DESCRIBES_ENTITY`. Reference rules extract named regex captures and create the
+same canonical target nodes plus routing relationships. Structural rules derive
+parent links from canonical IDs. Safe co-occurrence rules fire only when configured
+source and target counts are unambiguous.
+
+A profile may define a narrow `extraction.allowed_nodes` and
+`extraction.allowed_relationships` schema for the LLM while retaining the complete
+final graph schema at the top level for normalization and consolidation.
+
+Every derived relationship records `derived: true` and its `derivation_rule`.
+Profiles may render captured values into node IDs, node properties, and relationship
+properties. Set `consolidation.enabled: false` for profiles that require no
+deterministic completion.
+
 ## End-to-End Workflow
 
 The recommended setup is:

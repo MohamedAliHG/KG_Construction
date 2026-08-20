@@ -11,6 +11,19 @@ normalization:
     - fix_pdf_hyphenation
     - collapse_whitespace
     - strip
+consolidation:
+  enabled: false
+  structural_rules: []
+  reference_rules: []
+  cooccurrence_rules: []
+
+provenance:
+  mention_relationship: MENTIONS_ENTITY
+  description_relationship: DESCRIBES_ENTITY
+  unmatched_behavior: mention_only
+  keep_legacy_has_entity: true
+  description_rules: []
+
 additional_instructions: |
   Extract only entities and relationships that are explicitly supported by the
   source text. Use stable, human-readable node ids and avoid generic placeholder

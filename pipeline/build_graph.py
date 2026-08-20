@@ -7,7 +7,12 @@ from dataclasses import dataclass, field
 
 from config import settings
 from ingestion import load_chunks
-from graph import add_graph_documents, extract_graph_documents, normalize_graph_documents
+from graph import (
+    add_graph_documents,
+    consolidate_graph_documents,
+    extract_graph_documents,
+    normalize_graph_documents,
+)
 from graph.normalization import NormalizationMode
 from graph.schema_profiles import ExtractionMode, SchemaLevel
 
@@ -23,18 +28,23 @@ class PipelineStats:
     nodes_merged: int = 0
     relationships_dropped: int = 0
     relationships_reversed: int = 0
+    nodes_derived: int = 0
+    relationships_derived: int = 0
     elapsed_seconds: float = 0.0
     errors: list[str] = field(default_factory=list)
 
     def log_summary(self) -> None:
         logger.info(
             "Pipeline complete | batches=%d | chunks=%d | graph_docs=%d | "
-            "nodes_dropped=%d | relationships_dropped=%d | time=%.1fs | errors=%d",
+            "nodes_dropped=%d | relationships_dropped=%d | nodes_derived=%d | "
+            "relationships_derived=%d | time=%.1fs | errors=%d",
             self.batches_processed,
             self.chunks_processed,
             self.graph_docs_created,
             self.nodes_dropped,
             self.relationships_dropped,
+            self.nodes_derived,
+            self.relationships_derived,
             self.elapsed_seconds,
             len(self.errors),
         )
@@ -101,7 +111,14 @@ async def run_async(
                 mode=resolved_normalization_mode,
                 schema_profile_path=resolved_schema_profile_path,
             )
-            add_graph_documents(graph_docs)
+            graph_docs, consolidation_report = consolidate_graph_documents(
+                graph_docs,
+                schema_profile_path=resolved_schema_profile_path,
+            )
+            add_graph_documents(
+                graph_docs,
+                schema_profile_path=resolved_schema_profile_path,
+            )
 
             stats.batches_processed += 1
             stats.chunks_processed += len(batch)
@@ -110,6 +127,8 @@ async def run_async(
             stats.nodes_merged += normalization_report.nodes_merged
             stats.relationships_dropped += normalization_report.relationships_dropped
             stats.relationships_reversed += normalization_report.relationships_reversed
+            stats.nodes_derived += consolidation_report.nodes_created
+            stats.relationships_derived += consolidation_report.relationships_created
 
         except Exception as exc: 
             msg = f"Batch {batch_num} failed: {exc}"
