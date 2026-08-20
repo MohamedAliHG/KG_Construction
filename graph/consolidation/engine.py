@@ -61,6 +61,16 @@ def _consolidate_document(
     node_index = {_node_key(node): node for node in nodes}
     relationship_keys = {_relationship_key(rel) for rel in relationships}
 
+    source_text = graph_doc.source.page_content if graph_doc.source else ""
+    for rule in config.get("source_text_entity_rules") or ():
+        _apply_source_text_entity_rule(
+            rule,
+            source_text=source_text,
+            nodes=nodes,
+            node_index=node_index,
+            report=report,
+        )
+
     for rule in config.get("reference_rules") or ():
         _apply_reference_rule(
             rule,
@@ -71,8 +81,8 @@ def _consolidate_document(
             report=report,
         )
 
-    # Structural rules run after reference rules so they also connect newly
-    # derived Preparation and FlowchartBlockReference nodes.
+    # Structural rules run after entity and reference rules so they also connect
+    # newly derived Preparation and FlowchartBlockReference nodes.
     for rule in config.get("structural_rules") or ():
         _apply_structural_rule(
             rule,
@@ -94,6 +104,58 @@ def _consolidate_document(
         )
 
     return GraphDocument(nodes=nodes, relationships=relationships, source=graph_doc.source)
+
+
+def _apply_source_text_entity_rule(
+    raw_rule: Any,
+    *,
+    source_text: str,
+    nodes: list[Node],
+    node_index: dict[tuple[str, str], Node],
+    report: ConsolidationReport,
+) -> None:
+    """Create canonical entities from explicit source-text headings/captions."""
+    rule = _rule_mapping(raw_rule, "source_text_entity")
+    rule_id = str(rule.get("id") or "source_text_entity_rule")
+    gate_pattern = rule.get("when_text_regex")
+    if gate_pattern and re.search(
+        str(gate_pattern), source_text, re.IGNORECASE | re.MULTILINE
+    ) is None:
+        return
+
+    context, repeated = _extract_captures(
+        source_text, rule.get("captures") or {}, rule_id
+    )
+    context["source_text"] = source_text
+    matched = False
+    for raw_output in rule.get("outputs") or ():
+        output = _rule_mapping(raw_output, f"{rule_id}.output")
+        repeated_name = output.get("for_each")
+        contexts: Iterable[dict[str, Any]]
+        if repeated_name:
+            contexts = (
+                {**context, **item}
+                for item in repeated.get(str(repeated_name), ())
+            )
+        else:
+            contexts = (context,)
+
+        for output_context in contexts:
+            required = [str(value) for value in (output.get("requires") or ())]
+            if any(output_context.get(name) in (None, "") for name in required):
+                continue
+            target = _resolve_target(
+                output.get("target"),
+                context=output_context,
+                nodes=nodes,
+                node_index=node_index,
+                report=report,
+                rule_id=rule_id,
+            )
+            if target is not None:
+                matched = True
+    if matched:
+        report.rules_matched += 1
 
 
 def _apply_reference_rule(
@@ -354,7 +416,12 @@ def _validate_rules_against_profile(
     }
     if not allowed_nodes and not allowed_relationships:
         return
-    for section in ("structural_rules", "reference_rules", "cooccurrence_rules"):
+    for section in (
+        "source_text_entity_rules",
+        "structural_rules",
+        "reference_rules",
+        "cooccurrence_rules",
+    ):
         for raw_rule in config.get(section) or ():
             rule = _rule_mapping(raw_rule, section)
             source_type = rule.get("source_type")
@@ -362,7 +429,21 @@ def _validate_rules_against_profile(
                 raise ValueError(
                     f"Consolidation rule source type '{source_type}' is not allowed"
                 )
-            if section == "cooccurrence_rules":
+            if section == "source_text_entity_rules":
+                for output in rule.get("outputs") or ():
+                    output = _rule_mapping(output, "output")
+                    target = _rule_mapping(output.get("target"), "target")
+                    target_type = target.get("type")
+                    if (
+                        target_type
+                        and allowed_nodes
+                        and str(target_type) not in allowed_nodes
+                    ):
+                        raise ValueError(
+                            f"Source-text target type {target_type!r} is not allowed"
+                        )
+                specs = []
+            elif section == "cooccurrence_rules":
                 specs = [
                     (source_type, rule.get("relationship_type"), rule.get("target_type"))
                 ]

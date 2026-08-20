@@ -107,8 +107,13 @@ def build_schema_profile(
         return SchemaProfile(level=resolved)
 
     profile_data = load_schema_profile_data(profile_path or settings.schema_profile_path)
-    allowed_nodes = tuple(profile_data.get("allowed_nodes") or ())
-    relationships = profile_data.get("allowed_relationships") or {}
+    extraction_schema = profile_data.get("extraction") or {}
+    allowed_nodes = tuple(
+        extraction_schema.get("allowed_nodes", profile_data.get("allowed_nodes")) or ()
+    )
+    relationships = extraction_schema.get(
+        "allowed_relationships", profile_data.get("allowed_relationships")
+    ) or {}
 
     if resolved == SchemaLevel.CONSTRAINED:
         return SchemaProfile(

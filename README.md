@@ -190,11 +190,17 @@ queries should use `MENTIONS_ENTITY`.
 ### Config-driven relationship consolidation
 
 After normalization, `graph.consolidation.consolidate_graph_documents()` applies
-the active profile `consolidation` policy before Neo4j persistence. Reference rules
-extract named regex captures and can create canonical target nodes and routing
-relationships. Structural rules derive parent links from canonical IDs. Safe
-co-occurrence rules fire only when configured source and target counts are
-unambiguous.
+the active profile `consolidation` policy before Neo4j persistence.
+`source_text_entity_rules` create canonical entities from explicit headings and
+captions in the chunk itself, allowing provenance rules to mark the chunk with
+`DESCRIBES_ENTITY`. Reference rules extract named regex captures and create the
+same canonical target nodes plus routing relationships. Structural rules derive
+parent links from canonical IDs. Safe co-occurrence rules fire only when configured
+source and target counts are unambiguous.
+
+A profile may define a narrow `extraction.allowed_nodes` and
+`extraction.allowed_relationships` schema for the LLM while retaining the complete
+final graph schema at the top level for normalization and consolidation.
 
 Every derived relationship records `derived: true` and its `derivation_rule`.
 Profiles may render captured values into node IDs, node properties, and relationship
